@@ -1,7 +1,11 @@
 const express = require('express')
+const multiparty = require('multiparty')
+const path = require('path')
+const fs = require('fs')
 const router = express.Router()
 const UserModel = require('../model/UserModel')
-const {route} = require("express/lib/router");
+
+const UPLOAD_PATH = path.resolve(__dirname, '../public/uploads')
 
 router.post("/user/create", (req, res) => {
     const {username, password} = req.body
@@ -53,5 +57,60 @@ router.get('/user/list', (req, res) => {
             res.send({status: 1, msg: '获取用户列表异常, 请重新尝试'})
         })
 })
+
+router.post("/file/regularFileUpload", (req, res) => {
+    const form = new multiparty.Form()
+    form.parse(req, (err, fields, files) => {
+        if (err) {
+            res.send({status: 1, msg: '文件上传失败'})
+        } else {
+            const file = files.fileChunk[0]
+            const fileName = fields.fileHash[0] + '-' + Date.now()
+            const filePath = path.resolve(UPLOAD_PATH, fileName)
+            const readStream = fs.createReadStream(file.path)
+            const writeStream = fs.createWriteStream(filePath)
+            readStream.pipe(writeStream)
+            readStream.on('end', () => {
+                fs.unlinkSync(file.path)
+                res.send({status: 0, msg: '文件上传成功', data: {}})
+            })
+        }
+    })
+});
+
+router.post("/file/hugeFileUpload", (req, res) => {
+    console.log(req.files);
+    res.send("File uploaded successfully");
+});
+
+router.post("/file/mergeFile", (req, res) => {
+    const {fileHash, fileName} = req.body
+    console.log(fileHash, fileName)
+    res.send({fileName})
+    mergeFile()
+})
+
+    
+function mergeFile(sourceFiles, targetFile) {
+    const scripts = fs.readdirSync(path.resolve(__dirname, sourceFiles))
+    const fileWriteStream = fs.createWriteStream(path.resolve(__dirname, targetFile))
+    streamMergeRecursive(scripts, fileWriteStream)
+}
+
+function streamMergeRecursive(scripts = [], fileWriteStream) {
+    if (!scripts.length) {
+        return fileWriteStream.end("console.log('stream合并完成')")
+    }
+    const currentFile = path.resolve(__dirname, 'scripts/', scripts.shift())
+    const currentReadStream = fs.createReadStream(currentFile)
+    currentReadStream.pipe(fileWriteStream, {end: false})
+    currentReadStream.on('end', () => {
+        streamMergeRecursive(scripts, fileWriteStream)
+    })
+    currentFile.on('error', err => {
+        console.log(err)
+        fileWriteStream.close()
+    })
+}
 
 module.exports = router
